@@ -2,6 +2,7 @@ from typing import Callable, Iterable, Tuple
 
 import torch
 from torch.optim import Optimizer
+import math
 
 
 class AdamW(Optimizer):
@@ -31,6 +32,11 @@ class AdamW(Optimizer):
             loss = closure()
 
         for group in self.param_groups:
+            # Access hyperparameters from the `group` dictionary
+            alpha = group["lr"]
+            beta1, beta2 = group['betas']
+            eps = group['eps']
+            weight_decay = group['weight_decay']
             for p in group["params"]:
                 if p.grad is None:
                     continue
@@ -38,23 +44,32 @@ class AdamW(Optimizer):
                 if grad.is_sparse:
                     raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
 
-                raise NotImplementedError()
-
                 # State should be stored in this dictionary
                 state = self.state[p]
 
-                # Access hyperparameters from the `group` dictionary
-                alpha = group["lr"]
-
                 # Update first and second moments of the gradients
+                if len(state) == 0:
+                    #state['step'] = 0
+                    state['exp_avg'] = torch.zeros_like(p.data)
+                    state['exp_avg_sq'] = torch.zeros_like(p.data)
+                    state['beta1'], state['beta2'] = beta1, beta2
+                #state['step'] += 1
+                state['exp_avg'] = beta1 * state['exp_avg'] + (1 - beta1) * grad
+                state['exp_avg_sq'] = beta2 * state['exp_avg_sq'] + (1 - beta2) * torch.square(grad)
 
                 # Bias correction
                 # Please note that we are using the "efficient version" given in
                 # https://arxiv.org/abs/1412.6980
+                alpha_t = alpha * math.sqrt(1 - state['beta2']) / (1 - state['beta1'])
+                p.data -= alpha_t * state['exp_avg'] / (torch.sqrt(state['exp_avg_sq']) + eps)
 
                 # Update parameters
 
                 # Add weight decay after the main gradient-based updates.
                 # Please note that the learning rate should be incorporated into this update.
+                if weight_decay > 0.0:
+                    p.data -= p.data * (weight_decay * alpha)
+                state['beta1'] *= beta1
+                state['beta2'] *= beta2
 
         return loss
