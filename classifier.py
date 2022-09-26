@@ -52,6 +52,7 @@ class BertSentClassifier(torch.nn.Module):
         out = self.dropout(embedding)
         # linear
         out = self.projection(out)
+        out = F.log_softmax(out, dim=-1)
         return out
 
 # create a custom Dataset Class to be used for the dataloader
